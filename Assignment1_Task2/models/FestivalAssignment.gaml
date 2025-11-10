@@ -1,19 +1,19 @@
 /**
-
  * Name: FestivalAssignment
-
- * Description: Assignment1, Task1
-
+ * Description: Assignment1, Task2
  * Author: Agata Mazzani, Daniele Priola, Jacopo Veronese
-
  */
 model FestivalAssignment
 
 global {
-	int num_guests <- 10;
-	int num_stores <- 4;
+	int num_guests <- 1;
+	int num_stores <- 6;
+	int num_water_stores <- 0;
+	int num_food_stores <- 0;
+	int store_counter <- 0;
+	float totalDistance;
 	InformationCenter info_center;
-	float guestSpeed <- 0.001 / 1.5;
+	float guestSpeed <- 0.01 / 1.5;
 
 	init {
 		create InformationCenter number: 1 {
@@ -22,10 +22,14 @@ global {
 
 		info_center <- first(InformationCenter);
 		create Store number: num_stores {
+			store_id <- store_counter;
+			store_counter <- store_counter + 1;
 			if (flip(0.5)) {
 				store_type <- "FOOD";
+				num_food_stores <- num_food_stores + 1;
 			} else {
 				store_type <- "WATER";
+				num_water_stores <- num_water_stores + 1;
 			}
 
 		}
@@ -40,6 +44,7 @@ global {
 }
 
 species Store {
+	int store_id;
 	string store_type;
 
 	aspect base {
@@ -82,6 +87,7 @@ species Guest skills: [moving] {
 	InformationCenter my_info_center;
 	Store target_store <- nil;
 	bool going_to_info <- false;
+	list<Store> visitedStores <- nil;
 
 	aspect base {
 		if (going_to_info) {
@@ -105,7 +111,18 @@ species Guest skills: [moving] {
 				}
 
 				target_store <- my_info_center.find_store_for(my_need);
+				loop while: hasStoreBeenVisited(visitedStores, target_store) {
+					target_store <- my_info_center.find_store_for(my_need);
+				}
+
+				add target_store to: visitedStores;
+
+				// Controlla se ho visitato tutti gli store di questo tipo
+ do checkAndResetVisitedStores(my_need);
 				going_to_info <- false;
+				float distance <- self distance_to target_store.location;
+				totalDistance <- totalDistance + distance;
+				write "Total covered distance:" + totalDistance;
 			}
 
 		} else if (target_store != nil) {
@@ -132,7 +149,28 @@ species Guest skills: [moving] {
 
 			if (hunger = true or thirst = true) {
 				going_to_info <- true;
-			} } } }
+			} } }
+
+	bool hasStoreBeenVisited (list<Store> listOfStores, Store assignedStore) {
+		bool res <- false;
+		loop store over: listOfStores {
+			if (store.store_id = assignedStore.store_id) {
+				res <- true;
+			}
+
+		}
+
+		return res;
+	}
+
+	action checkAndResetVisitedStores (string storeType) {
+		int totalStoresOfType <- length(my_info_center.known_stores where (each.store_type = storeType));
+		int visitedStoresOfType <- length(visitedStores where (each.store_type = storeType));
+		if (visitedStoresOfType >= totalStoresOfType) {
+			visitedStores <- visitedStores where (each.store_type != storeType);
+		}
+
+	} }
 
 experiment FestivalSimulation type: gui {
 	output {
@@ -145,4 +183,3 @@ experiment FestivalSimulation type: gui {
 	}
 
 }
-
