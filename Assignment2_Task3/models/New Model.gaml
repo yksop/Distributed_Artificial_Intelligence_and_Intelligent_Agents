@@ -15,9 +15,7 @@ global {
 	InformationCenter info_center;
 	float guestSpeed <- 0.01 / 1.5;
 	int max_auctions <- 4;
-	list<Guest> guestsWillingToAuction <- nil;
-
-	// Statistiche globali
+	int guestsWillingToAuction <- 0;
 	int total_auctions <- 0;
 	int successful_auctions <- 0;
 	int cancelled_auctions <- 0;
@@ -45,19 +43,16 @@ global {
 		info_center.known_stores <- list(Store);
 		create Guest number: num_guests {
 			my_info_center <- info_center;
-			// Ogni guest ha 2-3 generi preferiti casuali
 		}
 
-		// Crea l'Auctioneer con item da vendere
-		create Auctioneer number: 1 {
-			location <- {20, 80};
+		create Auctioneer number: 3 {
+			location <- {rnd(0, 100), rnd(0, 100)};
 		}
 
 		write "FESTIVAL SIMULATION STARTED";
 		write "Guests: " + num_guests;
 	}
 
-	// Azione per stampare statistiche finali
 	reflex print_stats when: every(1000 #cycles) {
 		write "\n--- AUCTION STATISTICS ---";
 		write "Total auctions: " + total_auctions;
@@ -113,8 +108,6 @@ species Guest skills: [moving, fipa] {
 	InformationCenter my_info_center;
 	Store target_store <- nil;
 	bool going_to_info <- false;
-
-	// Attributi per l'asta
 	float my_max_price <- rnd(15.0, 50.0);
 	bool willing_to_auction <- false;
 
@@ -129,14 +122,9 @@ species Guest skills: [moving, fipa] {
 		draw circle(1.5) color: my_color;
 	}
 
-	// Risponde alle proposte di prezzo dall'auctioneer
 	reflex handle_auction_messages {
-	// Gestisce le proposte di prezzo (PROPOSE)
-
-	// Riceve conferma di vittoria (INFORM)
 		if (!empty(informs)) {
 			loop msg over: informs {
-			//write name + " HA VINTO!";
 				willing_to_auction <- false;
 			}
 
@@ -158,11 +146,9 @@ species Guest skills: [moving, fipa] {
 	}
 
 	reflex receive_accept when: !empty(accept_proposals) {
-	// write name + " HA VINTO!";
 		willing_to_auction <- false;
 	}
 
-	// Comportamenti normali del festival
 	reflex main_behaviors {
 		if (going_to_info) {
 			do goto target: my_info_center.location speed: guestSpeed;
@@ -187,9 +173,9 @@ species Guest skills: [moving, fipa] {
 
 		} else if (target_store = nil) {
 			do wander speed: guestSpeed;
-			if (flip(0.45)) {
+			if (flip(0.45) and !willing_to_auction) {
 				willing_to_auction <- true;
-				guestsWillingToAuction::add(Guest);
+				guestsWillingToAuction <- guestsWillingToAuction + 1;
 			}
 
 			if (flip(0.35) and !willing_to_auction) {
@@ -205,18 +191,13 @@ species Guest skills: [moving, fipa] {
 		} } }
 
 species Auctioneer skills: [fipa] {
-// Configurazione asta Dutch
 	float current_price;
 	int auction_count <- 0;
 	float starting_price <- 100.0;
 	float min_price <- 10.0;
 	float price_decrement <- 5.0;
-
-	// Stato asta
 	bool auction_running <- false;
 	bool item_sold <- false;
-
-	// Timing
 	int time_counter <- 0;
 	int round_duration <- 80;
 	int wait_before_start <- 150;
@@ -236,41 +217,27 @@ species Auctioneer skills: [fipa] {
 
 	}
 
-	// FASE 1: Inizia una nuova asta
-	reflex start_auction when: !auction_running and !item_sold and time_counter >= wait_before_start and lenth(guestsWillingToAuction) >= 3 {
+	reflex start_auction when: !auction_running and !item_sold and time_counter >= wait_before_start and guestsWillingToAuction >= 3 {
 		total_auctions <- total_auctions + 1;
-		write "The guests participating in the auction are " + guestsWillingToAuction + " in total";
-
-		// Scegli un item casuale da vendere
+		write "Guests willing to bid: " + guestsWillingToAuction;
 		current_price <- starting_price;
 		time_counter <- 0;
 		write "NEW DUTCH AUCTION STARTED";
 		write "Starting price: $" + starting_price;
 		write "Minimum price: $" + min_price;
 		write "Price reduction: $" + price_decrement + " per round\n";
-
-		// Invia prima proposta a tutti i guest
 		do start_conversation to: list(Guest) protocol: "fipa-contract-net" performative: "cfp" contents: [current_price];
 		auction_running <- true;
 	}
 
-	// FASE 2: Gestisci l'asta
 	reflex manage_auction when: auction_running and !item_sold {
 		time_counter <- time_counter + 1;
-
-		// Controlla se qualcuno ha accettato il prezzo corrente
 		if (!empty(proposes)) {
 			message proposal <- first(proposes);
 			agent winner <- agent(proposal.sender);
 			write "ITEM SOLD";
 			write "Winner: " + winner.name;
-			// write "Final price: $" + current_price;
-			// write "Rounds needed: " + int((starting_price - current_price) / price_decrement + 1) + "\n";
-
-			// Informa il vincitore
 			do accept_proposal message: proposal contents: ["You won!"];
-
-			// Notifica tutti gli altri che l'asta è finita
 			ask Guest {
 				if (self != winner) {
 					willing_to_auction <- false;
@@ -283,20 +250,15 @@ species Auctioneer skills: [fipa] {
 			successful_auctions <- successful_auctions + 1;
 			total_revenue <- total_revenue + current_price;
 			time_counter <- 0;
-			guestsWillingToAuction <- nil;
+			guestsWillingToAuction <- 0;
 		}
 
-		// Se nessuno ha comprato e il round è finito, riduci prezzo
 		if (!item_sold and time_counter mod round_duration = 0 and time_counter > 0) {
 			current_price <- current_price - price_decrement;
-
-			// Controlla se sotto la soglia minima
 			if (current_price < min_price) {
 				write "AUCTION CANCELLED";
 				write "Price dropped below minimum ($" + min_price + ")";
 				write "No buyers found\n";
-
-				// Notifica cancellazione resettando gli stati
 				ask Guest {
 					willing_to_auction <- false;
 				}
@@ -306,8 +268,6 @@ species Auctioneer skills: [fipa] {
 				time_counter <- 0;
 			} else {
 				write "Price reduced to: $" + current_price color: #orange;
-
-				// Invia nuova proposta di prezzo
 				do start_conversation to: list(Guest) protocol: "fipa-contract-net" performative: "cfp" contents: [current_price];
 			}
 
@@ -315,15 +275,11 @@ species Auctioneer skills: [fipa] {
 
 	}
 
-	// FASE 3: Cooldown e reset per nuova asta
 	reflex prepare_next_auction when: !auction_running {
 		time_counter <- time_counter + 1;
 		if (time_counter >= cooldown_between_auctions) {
-		// Reset per nuova asta
 			item_sold <- false;
 			time_counter <- 0;
-
-			// Reset guest states
 			ask Guest {
 				willing_to_auction <- false;
 			}
@@ -343,7 +299,6 @@ experiment FestivalSimulation type: gui {
 			species Auctioneer aspect: base;
 		}
 
-		// Monitor per statistiche in tempo reale
 		monitor "Active Auctions" value: length(Auctioneer where each.auction_running);
 		monitor "Total Auctions" value: total_auctions;
 		monitor "Successful Sales" value: successful_auctions;
