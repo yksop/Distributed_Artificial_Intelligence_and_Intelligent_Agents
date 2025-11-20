@@ -20,6 +20,8 @@ global {
 	int successful_auctions <- 0;
 	int cancelled_auctions <- 0;
 	float total_revenue <- 0.0;
+	int auctioneer_spawn_time <- 3000;
+	bool auctioneer_spawned <- false;
 
 	init {
 		create InformationCenter number: 1 {
@@ -45,12 +47,21 @@ global {
 			my_info_center <- info_center;
 		}
 
+		// create Auctioneer number: 1 {
+		// location <- {20, 80};
+		// }
+		write "FESTIVAL SIMULATION STARTED";
+		write "Guests: " + num_guests;
+		write "Auctioneer will appear after " + auctioneer_spawn_time + " cycles";
+	}
+
+	reflex spawn_auctioneer when: !auctioneer_spawned and cycle >= auctioneer_spawn_time {
 		create Auctioneer number: 1 {
 			location <- {20, 80};
 		}
 
-		write "FESTIVAL SIMULATION STARTED";
-		write "Guests: " + num_guests;
+		auctioneer_spawned <- true;
+		write "\n*** AUCTIONEER HAS APPEARED! ***\n";
 	}
 
 	reflex print_stats when: every(1000 #cycles) {
