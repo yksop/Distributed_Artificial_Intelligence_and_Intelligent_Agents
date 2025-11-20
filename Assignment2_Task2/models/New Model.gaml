@@ -19,6 +19,8 @@ global {
 	int cancelled_auctions <- 0;
 	float total_revenue <- 0.0;
 	list<string> sellable_items <- ["movies", "CDs", "books", "comics", "games"];
+	int auctioneer_spawn_time <- 2500;
+	bool auctioneer_spawned <- false;
 
 	init {
 		create InformationCenter number: 1 {
@@ -44,12 +46,16 @@ global {
 			my_info_center <- info_center;
 		}
 
+		write "FESTIVAL SIMULATION STARTED";
+		write "Guests: " + num_guests;
+	}
+
+	reflex spawn_auctioneer when: !auctioneer_spawned and cycle >= auctioneer_spawn_time {
 		create Auctioneer number: 3 {
 			location <- {rnd(0, 100), rnd(0, 100)};
 		}
 
-		write "FESTIVAL SIMULATION STARTED";
-		write "Guests: " + num_guests;
+		auctioneer_spawned <- true;
 	}
 
 	reflex print_stats when: every(1000 #cycles) {
