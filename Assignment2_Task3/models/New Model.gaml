@@ -1,6 +1,3 @@
-
-// MANCA ANCORA SCRIVERE LA LOGICA DENTRO IL REFLEX DI AUCTIONENGLISH (SPECIES DI ENGLISH) E POI ANCHE LA LOGICA DENTRO IL GUEST PER LA ENGLISH AUCTION
-
 /**
  * Name: FestivalAssignment
  * Description: Assignment 2 - Dutch Auction COMPLETE BASE VERSION
@@ -54,32 +51,29 @@ global {
 
 		write "FESTIVAL SIMULATION STARTED";
 		write "Guests: " + num_guests;
-		
 		create AuctioneerEnglish number: 1 {
 			location <- {rnd(0, 100), rnd(0, 100)};
 		}
 
-	
 		create AuctioneerSealedbid number: 1 {
 			location <- {rnd(0, 100), rnd(0, 100)};
 		}
 
 		write "FESTIVAL SIMULATION STARTED";
 		write "Guests: " + num_guests;
-		
 	}
 
 	reflex print_stats when: every(1000 #cycles) {
-		write "\n--- AUCTION STATISTICS ---";
-		write "Total auctions: " + total_auctions;
-		write "Successful: " + successful_auctions;
-		write "Cancelled: " + cancelled_auctions;
+	// write "\n--- AUCTION STATISTICS ---";
+	// write "Total auctions: " + total_auctions;
+	// write "Successful: " + successful_auctions;
+	// write "Cancelled: " + cancelled_auctions;
 		if (total_auctions > 0) {
-			write "Success rate: " + (successful_auctions / total_auctions * 100) + "%";
+		// write "Success rate: " + (successful_auctions / total_auctions * 100) + "%";
 		}
 
-		write "Total revenue: $" + total_revenue;
-		write "-------------------------\n";
+		// write "Total revenue: $" + total_revenue;
+		// write "-------------------------\n";
 	}
 
 }
@@ -126,6 +120,7 @@ species Guest skills: [moving, fipa] {
 	bool going_to_info <- false;
 	float my_max_price <- rnd(15.0, 50.0);
 	bool willing_to_auction <- false;
+	float englishAuctionMaxPrice <- rnd(10.0, 25.0);
 
 	aspect base {
 		rgb my_color <- #orange;
@@ -152,26 +147,38 @@ species Guest skills: [moving, fipa] {
 		message cfp <- cfps[0];
 		list content_list <- list(cfp.contents);
 		string typeOfAuction <- content_list[0];
-		if (typeOfAuction = "DUTCH"){
+		if (typeOfAuction = "DUTCH") {
 			float offered_price <- float(content_list[1]);
 			if (my_max_price >= offered_price) {
 				do propose with: [message: cfp, contents: [offered_price]];
 				willing_to_auction <- false;
 			} else {
 				do refuse with: [message: cfp, contents: ['Price too high']];
-			}	
-		}
-		else if (typeOfAuction = "ENGLISH"){
-			// DA RAGIONARE
-		}		
-		else if (typeOfAuction = "SEALED"){
-			// DA RAGIONARE 
+			}
+
+		} else if (typeOfAuction = "ENGLISH") {
+			float offered_price <- float(content_list[1]);
+			if (offered_price > englishAuctionMaxPrice) {
+				do refuse with: [message: cfp, contents: ['Price too high']];
+				ask AuctioneerEnglish {
+					remove myself from: self.active_guests;
+					write "I am out the English auction" color: #red;
+				}
+
+			} else {
+			// write "OFFERED PRICE AT GUEST IS " + offered_price color: #blue;
+				float newPrice <- offered_price + 5;
+				// write "newPrice is " + newPrice + "and offered price is " + offered_price color: #brown;
+				if (newPrice > offered_price) {
+					do propose with: [message: cfp, contents: [newPrice]];
+				}
+
+			}
+
+		} else if (typeOfAuction = "SEALED") {
 			do propose with: [message: cfp, contents: [my_max_price]];
 			willing_to_auction <- false;
-			
-		}
-
-	}
+		} }
 
 	reflex receive_accept when: !empty(accept_proposals) {
 		willing_to_auction <- false;
@@ -247,7 +254,7 @@ species AuctioneerDutch skills: [fipa] {
 
 	reflex start_auction when: !auction_running and !item_sold and time_counter >= wait_before_start and guestsWillingToAuction >= 3 {
 		total_auctions <- total_auctions + 1;
-		write "Guests willing to bid: " + guestsWillingToAuction;
+		// write "Guests willing to bid: " + guestsWillingToAuction;
 		current_price <- starting_price;
 		time_counter <- 0;
 		write "NEW DUTCH AUCTION STARTED";
@@ -263,8 +270,8 @@ species AuctioneerDutch skills: [fipa] {
 		if (!empty(proposes)) {
 			message proposal <- first(proposes);
 			agent winner <- agent(proposal.sender);
-			write "ITEM SOLD";
-			write "Winner: " + winner.name;
+			// write "ITEM SOLD";
+			// write "Winner: " + winner.name;
 			do accept_proposal message: proposal contents: ["You won!"];
 			ask Guest {
 				if (self != winner) {
@@ -284,9 +291,9 @@ species AuctioneerDutch skills: [fipa] {
 		if (!item_sold and time_counter mod round_duration = 0 and time_counter > 0) {
 			current_price <- current_price - price_decrement;
 			if (current_price < min_price) {
-				write "AUCTION CANCELLED";
-				write "Price dropped below minimum ($" + min_price + ")";
-				write "No buyers found\n";
+			// write "AUCTION CANCELLED";
+			// write "Price dropped below minimum ($" + min_price + ")";
+			// write "No buyers found\n";
 				ask Guest {
 					willing_to_auction <- false;
 				}
@@ -295,7 +302,7 @@ species AuctioneerDutch skills: [fipa] {
 				cancelled_auctions <- cancelled_auctions + 1;
 				time_counter <- 0;
 			} else {
-				write "Price reduced to: $" + current_price color: #orange;
+			// write "Price reduced to: $" + current_price color: #orange;
 				do start_conversation to: list(Guest) protocol: "fipa-contract-net" performative: "cfp" contents: ["DUTCH", current_price];
 			}
 
@@ -308,9 +315,9 @@ species AuctioneerDutch skills: [fipa] {
 		if (time_counter >= cooldown_between_auctions) {
 			item_sold <- false;
 			time_counter <- 0;
-			ask Guest {
-				willing_to_auction <- false;
-			}
+			//ask Guest {
+			// willing_to_auction <- false;
+			//}
 
 		}
 
@@ -319,9 +326,9 @@ species AuctioneerDutch skills: [fipa] {
 }
 
 species AuctioneerEnglish skills: [fipa] {
-	float current_price;
+	float current_price <- 0.0;
 	int auction_count <- 0;
-	float starting_price <- 100.0;
+	float starting_price <- 10.0;
 	float min_price <- 10.0;
 	float price_decrement <- 5.0;
 	bool auction_running <- false;
@@ -330,6 +337,8 @@ species AuctioneerEnglish skills: [fipa] {
 	int round_duration <- 80;
 	int wait_before_start <- 150;
 	int cooldown_between_auctions <- 300;
+	int auctioningGuests <- 0;
+	list<Guest> active_guests;
 
 	aspect base {
 		rgb auctioneer_color <- auction_running ? #pink : #gray;
@@ -347,25 +356,25 @@ species AuctioneerEnglish skills: [fipa] {
 
 	reflex start_auction when: !auction_running and !item_sold and time_counter >= wait_before_start and guestsWillingToAuction >= 3 {
 		total_auctions <- total_auctions + 1;
-		write "Guests willing to bid: " + guestsWillingToAuction;
+		// write "Guests willing to bid: " + guestsWillingToAuction;
 		current_price <- starting_price;
 		time_counter <- 0;
-		write "NEW DUTCH AUCTION STARTED";
+		write "NEW ENGLISH AUCTION STARTED";
 		write "Starting price: $" + starting_price;
-		write "Minimum price: $" + min_price;
-		write "Price reduction: $" + price_decrement + " per round\n";
-		do start_conversation to: list(Guest) protocol: "fipa-contract-net" performative: "cfp" contents: ["ENGLISH", current_price];
+		active_guests <- Guest where (each.willing_to_auction = true);
+		do start_conversation to: active_guests protocol: "fipa-contract-net" performative: "cfp" contents: ["ENGLISH", current_price];
 		auction_running <- true;
 	}
 
 	reflex manage_auction when: auction_running and !item_sold {
 		time_counter <- time_counter + 1;
-		if (!empty(proposes)) {
+		if (!empty(proposes) and length(active_guests) = 1) {
 			message proposal <- first(proposes);
 			agent winner <- agent(proposal.sender);
 			write "ITEM SOLD";
-			write "Winner: " + winner.name;
+			write "WINNEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEER: " + winner.name color: #red;
 			do accept_proposal message: proposal contents: ["You won!"];
+			write "DAI CHE NDEMOOOOOO";
 			ask Guest {
 				if (self != winner) {
 					willing_to_auction <- false;
@@ -382,21 +391,21 @@ species AuctioneerEnglish skills: [fipa] {
 		}
 
 		if (!item_sold and time_counter mod round_duration = 0 and time_counter > 0) {
-			current_price <- current_price - price_decrement;
-			if (current_price < min_price) {
-				write "AUCTION CANCELLED";
-				write "Price dropped below minimum ($" + min_price + ")";
-				write "No buyers found\n";
-				ask Guest {
-					willing_to_auction <- false;
+			if (!empty(proposes)) {
+				list<float> bids <- [];
+				loop p over: proposes {
+					list lst <- list(p.contents);
+					add float(lst[0]) to: bids;
 				}
 
-				auction_running <- false;
-				cancelled_auctions <- cancelled_auctions + 1;
-				time_counter <- 0;
-			} else {
-				write "Price reduced to: $" + current_price color: #orange;
-				do start_conversation to: list(Guest) protocol: "fipa-contract-net" performative: "cfp" contents: ["ENGLISH", current_price];
+				bids <- reverse(bids);
+				float best_bid <- first(bids);
+				if (!(best_bid < current_price)) {
+					current_price <- best_bid;
+					write "Number of guests bidding " + length(active_guests) color: #purple;
+					do start_conversation to: active_guests protocol: "fipa-contract-net" performative: "cfp" contents: ["ENGLISH", current_price];
+				}
+
 			}
 
 		}
@@ -428,7 +437,6 @@ species AuctioneerSealedbid skills: [fipa] {
 	int wait_before_start <- 150;
 	int cooldown_between_auctions <- 300;
 	list<message> collected_bids <- []; // Lista per raccogliere tutte le offerte
-
 	aspect base {
 		rgb auctioneer_color <- auction_running ? #green : #gray;
 		draw circle(3) color: auctioneer_color;
@@ -440,6 +448,7 @@ species AuctioneerSealedbid skills: [fipa] {
 			int cycles_left <- max([0, wait_before_start - time_counter]);
 			draw "in " + cycles_left + " cycles" at: location + {0, 1} color: #darkgray font: font("default", 7);
 		}
+
 	}
 
 	reflex start_auction when: !auction_running and !item_sold and time_counter >= wait_before_start and guestsWillingToAuction >= 2 {
@@ -447,34 +456,30 @@ species AuctioneerSealedbid skills: [fipa] {
 		write "\n=== NEW SEALED BID AUCTION STARTED ===";
 		write "Guests willing to bid: " + guestsWillingToAuction;
 		time_counter <- 0;
-		collected_bids <- []; 
+		collected_bids <- [];
 		max_price <- 0.0;
-		
-		do start_conversation to: list(Guest) protocol: "fipa-contract-net" 
-		   performative: "cfp" contents: ["SEALED"];
+		do start_conversation to: list(Guest) protocol: "fipa-contract-net" performative: "cfp" contents: ["SEALED"];
 		auction_running <- true;
 		write "Waiting for sealed bids...\n";
 	}
 
 	reflex manage_auction when: auction_running and !item_sold {
 		time_counter <- time_counter + 1;
-		
 		if (!empty(proposes)) {
 			loop proposal over: proposes {
 				add proposal to: collected_bids;
 				list content_list <- list(proposal.contents);
 				float bid_amount <- float(content_list[0]);
-				write "Received sealed bid: $" + bid_amount + " from " + agent(proposal.sender).name;
+				// write "Received sealed bid: $" + bid_amount + " from " + agent(proposal.sender).name;
 			}
+
 		}
-		
+
 		if (time_counter >= bid_collection_duration) {
 			write "\n--- OPENING SEALED BIDS ---";
 			write "Total bids received: " + length(collected_bids);
-			
 			if (empty(collected_bids)) {
-				// Nessuna offerta ricevuta
-				write "AUCTION CANCELLED - No bids received\n";
+			// write "AUCTION CANCELLED - No bids received\n";
 				cancelled_auctions <- cancelled_auctions + 1;
 				auction_running <- false;
 				time_counter <- 0;
@@ -482,38 +487,36 @@ species AuctioneerSealedbid skills: [fipa] {
 				ask Guest {
 					willing_to_auction <- false;
 				}
+
 			} else {
-				// Trova l'offerta più alta
 				message winning_bid <- nil;
 				float highest_bid <- 0.0;
-				
 				loop bid over: collected_bids {
 					list content_list <- list(bid.contents);
 					float bid_amount <- float(content_list[0]);
-					
 					if (bid_amount > highest_bid) {
 						highest_bid <- bid_amount;
 						winning_bid <- bid;
 					}
+
 				}
-				
+
 				agent winner <- agent(winning_bid.sender);
-				write "ITEM SOLD!";
-				write "Winning bid: $" + highest_bid;
-				write "Winner: " + winner.name + "\n";
-				
+				// write "ITEM SOLD!";
+				// write "Winning bid: $" + highest_bid;
+				// write "Winner: " + winner.name + "\n";
 				do accept_proposal message: winning_bid contents: ["You won!"];
-				
 				loop bid over: collected_bids {
 					if (bid != winning_bid) {
 						do reject_proposal message: bid contents: ["Someone bid higher"];
 					}
+
 				}
-				
+
 				ask Guest {
 					willing_to_auction <- false;
 				}
-				
+
 				item_sold <- true;
 				auction_running <- false;
 				successful_auctions <- successful_auctions + 1;
@@ -523,7 +526,9 @@ species AuctioneerSealedbid skills: [fipa] {
 				guestsWillingToAuction <- 0;
 				collected_bids <- [];
 			}
+
 		}
+
 	}
 
 	reflex prepare_next_auction when: !auction_running {
@@ -535,11 +540,12 @@ species AuctioneerSealedbid skills: [fipa] {
 			ask Guest {
 				willing_to_auction <- false;
 			}
+
 		}
+
 	}
+
 }
-
-
 
 experiment FestivalSimulation type: gui {
 	output {
@@ -550,15 +556,11 @@ experiment FestivalSimulation type: gui {
 			species AuctioneerDutch aspect: base;
 			species AuctioneerEnglish aspect: base;
 			species AuctioneerSealedbid aspect: base;
-			
-			
-			
 		}
 
 		monitor "Active Auctions" value: length(AuctioneerDutch where each.auction_running);
 		monitor "Active Auctions" value: length(AuctioneerEnglish where each.auction_running);
 		monitor "Active Auctions" value: length(AuctioneerSealedbid where each.auction_running);
-
 		monitor "Total Auctions" value: total_auctions;
 		monitor "Successful Sales" value: successful_auctions;
 		monitor "Cancelled Auctions" value: cancelled_auctions;
