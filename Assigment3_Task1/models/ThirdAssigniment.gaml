@@ -75,7 +75,7 @@ species Queen skills: [fipa] {
                 //write "Regina " + index + " ha esaurito le righe (start=" + start_row + "). BACKTRACK a Regina " + (index - 1);
                 do start_conversation to: [predecessor] protocol: 'fipa-propose' performative: 'propose' contents: ["backtrack", []];
             } else {
-                write "*** IMPOSSIBILE TROVARE SOLUZIONE ***";
+                write "*** IMPOSSIBLE TO FIND A SOLUTION ***";
                 no_solution <- true;
             }
             return;
@@ -97,7 +97,7 @@ species Queen skills: [fipa] {
                     do start_conversation to: [successor] protocol: 'fipa-propose' performative: 'propose' contents: ["next", new_history];
                 } else {
                     solution_found <- true;
-                    write "*** SOLUZIONE TROVATA! Configurazione: " + new_history + " ***";
+                    write "*** SOLUTION FOUND! Configuration: " + new_history + " ***";
                 }
                 return;
             }
@@ -109,7 +109,7 @@ species Queen skills: [fipa] {
             //write "Regina " + index + " bloccata (nessuna riga safe da " + start_row + " a " + (N-1) + "). BACKTRACK a Regina " + (index - 1);
             do start_conversation to: [predecessor] protocol: 'fipa-propose' performative: 'propose' contents: ["backtrack", []];
         } else {
-            write "*** IMPOSSIBILE TROVARE SOLUZIONE ***";
+            write "*** IMPOSSIBLE TO FIND A SOLUTION ***";
             no_solution <- true;
         }
     }
@@ -139,7 +139,7 @@ species Queen skills: [fipa] {
 }
 
 experiment NQueensExperiment type: gui {
-    parameter "Numero di Regine" var: N min: 4 max: 20;
+    parameter "Number of queens" var: N min: 4 max: 20;
     output {
         display board type: 2d axes: false antialias: true {
             graphics "chessboard" {
