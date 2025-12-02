@@ -132,32 +132,32 @@ species Guest parent: Person {
 
 	}
 
-	reflex listen_bouncer when: !empty(mailbox) {
+	reflex checkMail when: !empty(mailbox) {
 		message cfp <- mailbox[0];
 		list content_list <- list(cfp.contents);
 		string decision <- content_list[0];
-		if (decision = 'Y') {
-			is_inside <- true;
-			target <- any_location_in(chill_area);
-			do goto target: target speed: 1.0;
-		} else {
-			do die;
+		if (agent(cfp.sender) = the_bouncer) {
+			if (decision = 'Y') {
+				is_inside <- true;
+				target <- any_location_in(chill_area);
+			} else {
+				do die;
+			}
+
+		} else if (agent(cfp.sender) = the_barman) {
+			if (decision = 'Y') {
+				alcohoLevel <- 100;
+			}
+
 		}
 
 	}
 
-	reflex getDrinks when: alcohoLevel <= 50 and is_inside {
+	reflex getDrinks when: alcohoLevel <= 50 and is_inside and !is_dancing {
 		target <- bar_counter;
 		do goto target: target speed: 1.0;
-		do start_conversation to: [the_barman] protocol: 'fipa-request' performative: 'request' contents: [alcohoLevel];
-	}
-
-	reflex listen_barman when: !empty(mailbox) and is_inside {
-		message cfp <- mailbox[0];
-		list content_list <- list(cfp.contents);
-		string decision <- content_list[0];
-		if (decision = 'Y') {
-			alcohoLevel <- alcohoLevel + 10;
+		if (self distance_to target < 1.0) {
+			do start_conversation to: [the_barman] protocol: 'fipa-request' performative: 'request' contents: [alcohoLevel];
 		}
 
 	}
@@ -169,6 +169,7 @@ species Dancer parent: Guest {
 	reflex dance when: is_inside and alcohoLevel > 50 {
 		target <- any_location_in(dance_floor);
 		do goto target: target speed: 1.0;
+		is_dancing <- true;
 	}
 
 	aspect default {
@@ -182,6 +183,7 @@ species ShyPerson parent: Guest {
 	reflex dance when: is_inside and alcohoLevel > 70 {
 		target <- any_location_in(dance_floor);
 		do goto target: target speed: 1.0;
+		is_dancing <- true;
 	}
 
 	aspect default {
