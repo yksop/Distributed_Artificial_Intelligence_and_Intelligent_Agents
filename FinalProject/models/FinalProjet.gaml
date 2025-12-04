@@ -6,6 +6,8 @@
 * Author: Agata Mazzani, Daniele Priola, Jacopo Veronese
 * Tags: 
 */
+
+
 model FinalProject
 
 global {
@@ -95,6 +97,9 @@ species Person skills: [moving, fipa] {
 }
 
 species ResidentDJ parent: Person {
+	// da aggiungere: memoria che cambia il numero di canzoni
+	// ego: più è alto più rifiuta le canzoni perchè le vuole mettere lui
+	// si muove quando ha sete e vuole un drink
 	list<int> song_queue <- [];
 	int current_song <- -1;
 	int song_timer <- 0;
@@ -136,6 +141,9 @@ species ResidentDJ parent: Person {
 }
 
 species Bouncer parent: Person {
+	// se ne possono mettere due ed eliminare le persone se sono troppo ubriache 
+	// per fare entrare i guest in maniera scaglionata si ferma dopo un numero di guest per fumare
+	// quando non c'è più nessuno in coda fa un giro nel locale a controllare 
 	Guest chasing_target <- nil;
 
 	reflex answer_guests when: !empty(requests) {
@@ -184,6 +192,10 @@ species Bouncer parent: Person {
 species Barman parent: Person {
 	float impatience <- rnd(0.1, 0.9); // change this in final report to see how happiness changes over time
 	float generosity <- rnd(0.1, 0.9); // change this in final report to see how happiness changes over time
+	int max_stock <- 600;
+	int current_stock <- 600;
+	bool is_restocking <- false;
+
 	reflex giveDrink when: !empty(requests) {
 		message cfp <- requests[0];
 		list content_list <- list(cfp.contents);
@@ -196,10 +208,25 @@ species Barman parent: Person {
 			alcohol_check <- true;
 		}
 
-		if (alcohol_check) {
+		if (alcohol_check and current_stock > 0) {
+			current_stock <- current_stock - 1;
 			do agree message: cfp contents: ['Y', generosity];
+			if (current_stock = 0) {
+				is_restocking <- true;
+				write ("Bar is closed for restocking");
+			}
+
 		} else {
 			do refuse with: [message: cfp, contents: ["N"]];
+		}
+
+	}
+
+	reflex stocking_process when: is_restocking {
+		current_stock <- current_stock + 100;
+		if (current_stock >= max_stock) {
+			is_restocking <- false;
+			write ("Bar is open again!");
 		}
 
 	}
@@ -219,6 +246,7 @@ species Guest parent: Person {
 	float happiness <- 0.5;
 	int time_inside <- 0;
 	int time_since_last_drink <- 0;
+	bool isGoingToDJ <- false;
 
 	reflex moveTowardsEntrance {
 		if (!is_inside and !is_leaving) {
@@ -252,7 +280,9 @@ species Guest parent: Person {
 				alcohoLevel <- min([alcohoLevel + 40, 100]);
 				happiness <- min([(happiness + 0.1) * generosity, 1.0]);
 				time_since_last_drink <- 0;
+				
 			}
+			target <- any_location_in(dance_floor);
 
 		} else if (agent(cfp.sender) = dj) {
 			if (decision = 'N') {
@@ -261,7 +291,12 @@ species Guest parent: Person {
 
 		} }
 
-	reflex getDrinks when: alcohoLevel <= 50 and is_inside and !is_leaving {
+	reflex decrease_alcohol when: is_inside and flip(0.05) {
+		alcohoLevel <- max([alcohoLevel - 2, 0]);
+		time_since_last_drink <- time_since_last_drink + 1;
+	}
+
+	reflex getDrinks when: alcohoLevel <= 50 and is_inside and !is_leaving and !isGoingToDJ{
 		is_dancing <- false;
 		target <- bar_counter;
 		do goto target: target speed: 1.0;
@@ -271,38 +306,12 @@ species Guest parent: Person {
 
 	}
 
-	reflex go_relax when: is_inside and !is_leaving and flip(0.01) {
-		is_dancing <- false;
-		target <- any_location_in(chill_area);
-		do goto target: target speed: 0.8;
-		if (location distance_to target < 3.0 and flip(0.05)) {
-			happiness <- min([happiness + 0.05, 1.0]);
-		}
-
-	}
-
-	reflex decrease_alcohol when: is_inside and flip(0.05) {
-		alcohoLevel <- max([alcohoLevel - 2, 0]);
-		time_since_last_drink <- time_since_last_drink + 1;
-	}
-
 	reflex decrease_happiness when: is_inside and flip(0.03) {
 		happiness <- max([happiness - 0.02, 0.0]);
-	}
-
-	reflex leave_club when: is_leaving {
-		is_dancing <- false;
-		target <- exit_door;
-		do goto target: target speed: 1.0;
-		if (self distance_to exit_door < 2.0) {
-			do die;
-		}
-
 	} }
 
 species Dancer parent: Guest {
 	int my_song <- [];
-	bool isGoingToDJ;
 
 	init {
 		my_song <- rnd(1, 10);
@@ -315,29 +324,13 @@ species Dancer parent: Guest {
 		is_dancing <- true;
 		happiness <- min([happiness + 0.01, 1.0]);
 	}
-
-	reflex go_chill when: is_inside and alcohoLevel <= 50 and !is_leaving and !isGoingToDJ {
-		target <- any_location_in(chill_area);
-		is_dancing <- false;
-		do goto target: target speed: 0.8;
-		if (location distance_to target < 3.0 and flip(0.1)) {
-			target <- bar_counter;
-		}
-
-	}
-
-	reflex take_break when: is_inside and !is_leaving and is_dancing and !isGoingToDJ and flip(0.008) {
-		is_dancing <- false;
-		target <- any_location_in(chill_area);
-		do goto target: target speed: 0.8;
-	}
-
-	reflex request_song when: is_inside and !is_leaving and flip(0.1) {
-		isGoingToDJ <- true;
+	
+	reflex request_song when: is_inside and !is_leaving and flip(0.01) {
+		//isGoingToDJ <- true;
 		int s <- one_of(my_song);
-		target <- dj.location;
-		do goto target: target speed: 1.0;
-		if (self distance_to dj < 0.05) {
+//		target <- dj.location;
+		do goto target: dj.location speed: 1.0;
+		if (self distance_to dj < 1) {
 			isGoingToDJ <- false;
 			do start_conversation to: [dj] protocol: "fipa-request" performative: "request" contents: [s];
 		}
@@ -390,7 +383,7 @@ species ShyPerson parent: Guest {
 
 	}
 
-	reflex call_dancer_for_boost when: is_inside and dance_desire < 0.4 and !is_dancing and flip(0.02) {
+	reflex call_dancer_for_boost when: is_inside and dance_desire < 0.4 and !is_dancing and flip(0.2) {
 		list<Dancer> nearby_dancers <- Dancer where (each.is_inside and (each distance_to self) < 15);
 		if (!empty(nearby_dancers)) {
 			Dancer friend <- one_of(nearby_dancers);
