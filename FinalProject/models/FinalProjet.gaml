@@ -6,7 +6,6 @@
 * Author: Agata Mazzani, Daniele Priola, Jacopo Veronese
 * Tags: 
 */
-
 model FinalProject
 
 global {
@@ -26,17 +25,17 @@ global {
 	geometry entrance <- polygon([{0, 85}, {100, 85}, {100, 100}, {0, 100}]);
 	list<geometry> zone_shapes <- [dance_floor, bar, chill_area, entrance];
 	list<rgb> zone_colors <- [#purple, #blue, #green, #darkred];
-
 	float global_happiness <- 0.0;
 	int current_tick <- 0;
 	bool is_closing <- false;
 
 	reflex update_stats {
 		current_tick <- current_tick + 1;
-		list<Guest> all_guests <- Guest where (each.is_inside);
+		list<Guest> all_guests <- (Dancer where (each.is_inside)) + (ShyPerson where (each.is_inside));
 		if (length(all_guests) > 0) {
 			global_happiness <- mean(all_guests collect each.happiness);
 		}
+
 	}
 
 	init {
@@ -64,17 +63,19 @@ global {
 			location <- bar_counter;
 			the_barman <- self;
 		}
-		
+
 		create ResidentDJ number: 1 {
 			location <- dj_point;
 			dj <- self;
 		}
 
 	}
+
 	reflex sync_song {
-	    if (dj != nil) {
-	        playing_song <- dj.current_song;
-	    }
+		if (dj != nil) {
+			playing_song <- dj.current_song;
+		}
+
 	}
 
 }
@@ -94,36 +95,45 @@ species Person skills: [moving, fipa] {
 }
 
 species ResidentDJ parent: Person {
-    list<int> song_queue <- [];
-    int current_song <- -1;
-    int song_timer <- 0;
+	list<int> song_queue <- [];
+	int current_song <- -1;
+	int song_timer <- 0;
 
-    reflex play_songs {
-        if (current_song = -1 and !empty(song_queue)) {
-            current_song <- song_queue[0];
-            song_timer <- 20; 
-        }
-        if (current_song != -1) {
-            song_timer <- song_timer - 1;
-            if (song_timer <= 0) {
-                current_song <- -1;
-            }
-        }
-    }
+	reflex play_songs {
+		if (current_song = -1 and !empty(song_queue)) {
+			current_song <- song_queue[0];
+			song_timer <- 20;
+		}
 
-    reflex answer_requests when: !empty(requests) {
-        message req <- requests[0];
-        list content <- list(req.contents);
-        int requested_song <- int(content[0]);
-        add requested_song to: song_queue;
-        do agree message: req contents: ['OK'];
-    }
+		if (current_song != -1) {
+			song_timer <- song_timer - 1;
+			if (song_timer <= 0) {
+				current_song <- -1;
+				remove song_queue[0] from: song_queue;
+			}
 
-    aspect default {
-        draw circle(2) color: #yellow;
-    }
+		}
+
+	}
+
+	reflex answer_requests when: !empty(requests) {
+		message req <- requests[0];
+		list content <- list(req.contents);
+		int requested_song <- int(content[0]);
+		if (length(song_queue) > 10) {
+			do refuse message: req contents: ['N'];
+		} else {
+			add requested_song to: song_queue;
+			do agree message: req contents: ['Y'];
+		}
+
+	}
+
+	aspect default {
+		draw circle(2) color: #yellow;
+	}
+
 }
-
 
 species Bouncer parent: Person {
 	Guest chasing_target <- nil;
@@ -172,13 +182,22 @@ species Bouncer parent: Person {
 }
 
 species Barman parent: Person {
-
+	float impatience <- rnd(0.1, 0.9); // change this in final report to see how happiness changes over time
+	float generosity <- rnd(0.1, 0.9); // change this in final report to see how happiness changes over time
 	reflex giveDrink when: !empty(requests) {
 		message cfp <- requests[0];
 		list content_list <- list(cfp.contents);
 		int alcohoLevel <- int(content_list[0]);
-		if (alcohoLevel <= 80) {
-			do agree message: cfp contents: ['Y'];
+		int alcohol_tolerance_limit <- int(30 + (impatience * 35));
+		bool alcohol_check;
+		if (alcohoLevel > alcohol_tolerance_limit) {
+			alcohol_check <- false;
+		} else {
+			alcohol_check <- true;
+		}
+
+		if (alcohol_check) {
+			do agree message: cfp contents: ['Y', generosity];
 		} else {
 			do refuse with: [message: cfp, contents: ["N"]];
 		}
@@ -212,6 +231,7 @@ species Guest parent: Person {
 		if (the_bouncer != nil) {
 			do start_conversation to: [the_bouncer] protocol: 'fipa-request' performative: 'request' contents: [age];
 		}
+
 	}
 
 	reflex checkMail when: !empty(mailbox) {
@@ -228,14 +248,18 @@ species Guest parent: Person {
 
 		} else if (agent(cfp.sender) = the_barman) {
 			if (decision = 'Y') {
+				float generosity <- float(content_list[1]);
 				alcohoLevel <- min([alcohoLevel + 40, 100]);
-				happiness <- min([happiness + 0.1, 1.0]);
+				happiness <- min([(happiness + 0.1) * generosity, 1.0]);
 				time_since_last_drink <- 0;
 			}
 
-		}
+		} else if (agent(cfp.sender) = dj) {
+			if (decision = 'N') {
+				happiness <- happiness - 0.1;
+			}
 
-	}
+		} }
 
 	reflex getDrinks when: alcohoLevel <= 50 and is_inside and !is_leaving {
 		is_dancing <- false;
@@ -274,72 +298,66 @@ species Guest parent: Person {
 			do die;
 		}
 
-	}
-
-}
+	} }
 
 species Dancer parent: Guest {
-	list<int> my_songs <- [];
+	int my_song <- [];
+	bool isGoingToDJ;
 
 	init {
-	    my_songs <- shuffle([1::10])[0::10]; // 10 numeri da 1 a 10 mischiati
+		my_song <- rnd(1, 10);
+		isGoingToDJ <- false;
 	}
-	
 
-	reflex dance when: is_inside and alcohoLevel > 50 and !is_leaving and flip(0.8) {
+	reflex dance when: is_inside and alcohoLevel > 50 and !is_leaving and !isGoingToDJ and flip(0.8) {
 		target <- any_location_in(dance_floor);
 		do goto target: target speed: 1.0;
 		is_dancing <- true;
 		happiness <- min([happiness + 0.01, 1.0]);
 	}
 
-	reflex go_chill when: is_inside and alcohoLevel <= 50 and !is_leaving {
+	reflex go_chill when: is_inside and alcohoLevel <= 50 and !is_leaving and !isGoingToDJ {
 		target <- any_location_in(chill_area);
 		is_dancing <- false;
 		do goto target: target speed: 0.8;
-
 		if (location distance_to target < 3.0 and flip(0.1)) {
 			target <- bar_counter;
 		}
 
 	}
 
-	reflex take_break when: is_inside and !is_leaving and is_dancing and flip(0.008) {
+	reflex take_break when: is_inside and !is_leaving and is_dancing and !isGoingToDJ and flip(0.008) {
 		is_dancing <- false;
 		target <- any_location_in(chill_area);
 		do goto target: target speed: 0.8;
 	}
-	
-	reflex request_song when: is_inside and !is_leaving and flip(0.01) {
-	    int s <- one_of(my_songs);
-	
-	    target <- dj.location;
-	    do goto target: target speed: 1.0;
-	
-	    if (self distance_to dj < 3.0) {
-	        do start_conversation to: [dj]
-	            protocol: "fipa-request"
-	            performative: "request"
-	            contents: [s];
-	    }
+
+	reflex request_song when: is_inside and !is_leaving and flip(0.1) {
+		isGoingToDJ <- true;
+		int s <- one_of(my_song);
+		target <- dj.location;
+		do goto target: target speed: 1.0;
+		if (self distance_to dj < 0.05) {
+			isGoingToDJ <- false;
+			do start_conversation to: [dj] protocol: "fipa-request" performative: "request" contents: [s];
+		}
+
 	}
 
 	int last_song_tick <- 0;
 
-	reflex enjoy_song when: playing_song != -1 and is_inside and !is_leaving {
-	    // Felicità aumenta durante la canzone
-	    happiness <- min([happiness + 0.25/20, 1.0]); // 0.25 ogni 20 tick
-	    last_song_tick <- cycle;
+	reflex enjoy_song when: playing_song != -1 and is_inside and !is_leaving and playing_song = my_song {
+		happiness <- min([happiness + 0.25 / 20, 1.0]);
+		last_song_tick <- cycle;
 	}
-	
+
 	reflex post_song_drop when: playing_song = -1 and (cycle - last_song_tick) > 15 {
-	    happiness <- max([happiness - 0.05, 0.0]);
+		happiness <- max([happiness - 0.05, 0.0]);
 	}
-			
-	
-		aspect default {
-			draw circle(1) color: #white;
-		}
+
+	aspect default {
+		draw circle(1) color: #black;
+	}
 
 }
 
@@ -354,7 +372,6 @@ species ShyPerson parent: Guest {
 	reflex get_bored when: is_inside and boredom > 150 and !is_leaving {
 		is_dancing <- false;
 		if (alcohoLevel < 60) {
-
 			target <- bar_counter;
 			do goto target: target speed: 0.7;
 			if (self distance_to target < 1.5) {
@@ -363,7 +380,6 @@ species ShyPerson parent: Guest {
 			}
 
 		} else {
-
 			target <- any_location_in(chill_area);
 			do goto target: target speed: 0.6;
 			if (flip(0.1)) {
@@ -381,6 +397,11 @@ species ShyPerson parent: Guest {
 			dance_desire <- dance_desire + 0.3;
 			happiness <- happiness + 0.15;
 			target <- any_location_in(dance_floor);
+			is_dancing <- true;
+			ask friend {
+				self.is_dancing <- true;
+			}
+
 		}
 
 	}
@@ -437,6 +458,10 @@ experiment FinalProject type: gui {
 		monitor "Global Happiness" value: global_happiness;
 		monitor "Guests Inside" value: length(Guest where each.is_inside);
 		monitor "Club Status" value: is_closing ? "CLOSING" : "OPEN";
+	}
+
+	init {
+		inspect "Agent Beliefs" value: (list(Dancer) + list(ShyPerson)) attributes: ['name', 'happiness', 'alcohoLevel', 'boredom'] type: table;
 	}
 
 }
