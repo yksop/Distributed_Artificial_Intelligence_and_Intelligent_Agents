@@ -7,7 +7,6 @@
 * Tags: 
 */
 
-
 model FinalProject
 
 global {
@@ -97,35 +96,38 @@ species Person skills: [moving, fipa] {
 }
 
 species ResidentDJ parent: Person {
-	// da aggiungere: memoria che cambia il numero di canzoni
-	// ego: più è alto più rifiuta le canzoni perchè le vuole mettere lui
-	// si muove quando ha sete e vuole un drink
 	list<int> song_queue <- [];
 	int current_song <- -1;
 	int song_timer <- 0;
+	int memory <- rnd(3, 10);
+	int ego <- rnd(0, 1);
+	int laziness <- rnd(0, 30);
+	int break_timer <- 0;
 
-	reflex play_songs {
-		if (current_song = -1 and !empty(song_queue)) {
-			current_song <- song_queue[0];
-			song_timer <- 20;
-		}
-
+	reflex play_manager {
 		if (current_song != -1) {
 			song_timer <- song_timer - 1;
 			if (song_timer <= 0) {
 				current_song <- -1;
-				remove song_queue[0] from: song_queue;
+				if (!empty(song_queue)) {
+					remove song_queue[0] from: song_queue;
+				}
+
+				break_timer <- laziness;
 			}
 
-		}
-
-	}
+		} else if (break_timer > 0) {
+			break_timer <- break_timer - 1;
+		} else if (current_song = -1 and break_timer <= 0 and !empty(song_queue)) {
+			current_song <- song_queue[0];
+			song_timer <- 20;
+		} }
 
 	reflex answer_requests when: !empty(requests) {
 		message req <- requests[0];
 		list content <- list(req.contents);
 		int requested_song <- int(content[0]);
-		if (length(song_queue) > 10) {
+		if (length(song_queue) > memory and flip(ego)) {
 			do refuse message: req contents: ['N'];
 		} else {
 			add requested_song to: song_queue;
@@ -136,51 +138,83 @@ species ResidentDJ parent: Person {
 
 	aspect default {
 		draw circle(2) color: #yellow;
-	}
-
-}
+	} }
 
 species Bouncer parent: Person {
-	// se ne possono mettere due ed eliminare le persone se sono troppo ubriache 
-	// per fare entrare i guest in maniera scaglionata si ferma dopo un numero di guest per fumare
-	// quando non c'è più nessuno in coda fa un giro nel locale a controllare 
+	int guests_entered_in_batch <- 0;
+	int batch_limit <- 20;
+	int break_duration <- 100;
+	int break_timer <- 0;
 	Guest chasing_target <- nil;
+	bool handelingQueue <- true;
+	int guest_entered <- 0;
+	bool is_taking_break <- false;
+	float corrupted <- rnd(0.1, 0.9);
 
-	reflex answer_guests when: !empty(requests) {
-		message cfp <- requests[0];
-		list content_list <- list(cfp.contents);
-		int guest_age <- int(content_list[0]);
-		if (guest_age >= 21) {
-			do agree message: cfp contents: ['Y'];
-		} else {
-			do refuse with: [message: cfp, contents: ["N"]];
+	reflex manage_break when: is_taking_break {
+		break_timer <- break_timer - 1;
+		color <- #red;
+		if (break_timer <= 0) {
+			is_taking_break <- false;
+			guests_entered_in_batch <- 0;
+			color <- #black;
+			write "Bouncer: Pausa finita, avanti il prossimo!";
 		}
 
 	}
 
-	reflex check_drunk_guests when: chasing_target = nil {
-		list<Guest> drunk_guests <- Guest where (each.is_inside and each.alcohoLevel > 74 and !each.is_leaving);
+	reflex answer_guests when: !empty(requests) and !is_taking_break {
+		handelingQueue <- true;
+
+		loop while: !empty(requests) {
+			message cfp <- requests[0];
+			list content_list <- list(cfp.contents);
+			int guest_age <- int(content_list[0]);
+			if (guest_age >= 21) {
+				do agree message: cfp contents: ['Y'];
+				guests_entered_in_batch <- guests_entered_in_batch + 1;
+				if (guests_entered_in_batch >= batch_limit) {
+					is_taking_break <- true;
+					break_timer <- break_duration;
+					write "Bouncer: Ho fatto entrare 20 persone. Ora mi prendo una pausa.";
+					break; 
+				}
+
+			} else if (flip(corrupted)){
+				do agree message: cfp contents: ['Y'];
+				write "ho fatto entrare un minorenne che non doveva";
+			}
+			else{
+				do refuse with: [message: cfp, contents: ["N"]];	
+			}
+
+		}
+
+		handelingQueue <- false; 
+	}
+
+	reflex check_drunk_guests when: chasing_target = nil and !handelingQueue and !is_taking_break {
+		//list<Guest> drunk_guests <- (Guest where (each.is_inside and each.alcohoLevel > 90)) + (ShyPerson where (each.is_inside and each.alcohoLevel > 90));
+		list<Guest> drunk_guests <- (Guest where (each.is_inside and each.alcohoLevel > 90)); //change to see when the bouncer goes to people
 		if (!empty(drunk_guests)) {
 			chasing_target <- one_of(drunk_guests);
+			write "Bouncer: Ho trovato un ubriaco da buttare fuori!";
 		}
 
 	}
 
-	reflex chase_drunk when: chasing_target != nil and !dead(chasing_target) {
+	reflex chase_drunk when: chasing_target != nil and !dead(chasing_target) and !handelingQueue {
 		do goto target: chasing_target speed: 1.5;
 		if (self distance_to chasing_target < 2.0) {
 			ask chasing_target {
-				is_leaving <- true;
+				write "Bouncer: Ubriaco buttato fuori!";
+				do die;
 			}
 
+			location <- {11, 83};
 			chasing_target <- nil;
 		}
 
-	}
-
-	reflex reset_chase when: chasing_target != nil and (dead(chasing_target) or chasing_target.is_leaving) {
-		chasing_target <- nil;
-		location <- {11, 83};
 	}
 
 	aspect default {
@@ -232,7 +266,7 @@ species Barman parent: Person {
 	}
 
 	aspect default {
-		draw circle(1) color: #brown;
+		draw circle(3) color: #brown;
 	}
 
 }
@@ -247,6 +281,8 @@ species Guest parent: Person {
 	int time_inside <- 0;
 	int time_since_last_drink <- 0;
 	bool isGoingToDJ <- false;
+	bool waiting_for_response <- false;
+	int patience_timer <- 0;
 
 	reflex moveTowardsEntrance {
 		if (!is_inside and !is_leaving) {
@@ -255,9 +291,19 @@ species Guest parent: Person {
 
 	}
 
-	reflex ask_to_enter when: !is_inside and !is_leaving and (location distance_to entrance_door) < 2.0 {
+	reflex ask_to_enter when: !is_inside and !is_leaving and (location distance_to entrance_door) < 2.0 and !waiting_for_response {
 		if (the_bouncer != nil) {
 			do start_conversation to: [the_bouncer] protocol: 'fipa-request' performative: 'request' contents: [age];
+			waiting_for_response <- true;
+			patience_timer <- 0;
+		}
+
+	}
+
+	reflex wait_patience when: waiting_for_response {
+		patience_timer <- patience_timer + 1;
+		if (patience_timer > 50) {
+			waiting_for_response <- false;
 		}
 
 	}
@@ -267,10 +313,11 @@ species Guest parent: Person {
 		list content_list <- list(cfp.contents);
 		string decision <- content_list[0];
 		if (agent(cfp.sender) = the_bouncer) {
+			waiting_for_response <- false;
 			if (decision = 'Y') {
 				is_inside <- true;
 				target <- any_location_in(chill_area);
-			} else {
+			} else if (decision = 'N') {
 				do die;
 			}
 
@@ -280,10 +327,9 @@ species Guest parent: Person {
 				alcohoLevel <- min([alcohoLevel + 40, 100]);
 				happiness <- min([(happiness + 0.1) * generosity, 1.0]);
 				time_since_last_drink <- 0;
-				
 			}
-			target <- any_location_in(dance_floor);
 
+			target <- any_location_in(dance_floor);
 		} else if (agent(cfp.sender) = dj) {
 			if (decision = 'N') {
 				happiness <- happiness - 0.1;
@@ -294,16 +340,6 @@ species Guest parent: Person {
 	reflex decrease_alcohol when: is_inside and flip(0.05) {
 		alcohoLevel <- max([alcohoLevel - 2, 0]);
 		time_since_last_drink <- time_since_last_drink + 1;
-	}
-
-	reflex getDrinks when: alcohoLevel <= 50 and is_inside and !is_leaving and !isGoingToDJ{
-		is_dancing <- false;
-		target <- bar_counter;
-		do goto target: target speed: 1.0;
-		if (self distance_to target < 1.5) {
-			do start_conversation to: [the_barman] protocol: 'fipa-request' performative: 'request' contents: [alcohoLevel];
-		}
-
 	}
 
 	reflex decrease_happiness when: is_inside and flip(0.03) {
@@ -324,13 +360,24 @@ species Dancer parent: Guest {
 		is_dancing <- true;
 		happiness <- min([happiness + 0.01, 1.0]);
 	}
-	
-	reflex request_song when: is_inside and !is_leaving and flip(0.01) {
-		//isGoingToDJ <- true;
+
+	reflex getDrinks when: alcohoLevel <= 50 and is_inside and !is_leaving {
+		isGoingToDJ <- true;
+		is_dancing <- false;
+		target <- bar_counter;
+		do goto target: target speed: 1.0;
+		if (self distance_to target < 1.5) {
+			do start_conversation to: [the_barman] protocol: 'fipa-request' performative: 'request' contents: [alcohoLevel];
+			isGoingToDJ <- false;
+		}
+
+	}
+
+	reflex request_song when: is_inside and !is_leaving and flip(0.3) {
 		int s <- one_of(my_song);
-//		target <- dj.location;
+		//		target <- dj.location;
 		do goto target: dj.location speed: 1.0;
-		if (self distance_to dj < 1) {
+		if (self distance_to dj < 3) {
 			isGoingToDJ <- false;
 			do start_conversation to: [dj] protocol: "fipa-request" performative: "request" contents: [s];
 		}
@@ -379,6 +426,18 @@ species ShyPerson parent: Guest {
 				boredom <- max([boredom - 10, 0]);
 			}
 
+		}
+
+	}
+
+	reflex getDrinks when: alcohoLevel <= 50 and is_inside and !is_leaving {
+		isGoingToDJ <- true;
+		is_dancing <- false;
+		target <- bar_counter;
+		do goto target: target speed: 1.0;
+		if (self distance_to target < 1.5) {
+			do start_conversation to: [the_barman] protocol: 'fipa-request' performative: 'request' contents: [alcohoLevel];
+			isGoingToDJ <- false;
 		}
 
 	}
@@ -450,11 +509,10 @@ experiment FinalProject type: gui {
 		monitor "Current Time" value: current_tick;
 		monitor "Global Happiness" value: global_happiness;
 		monitor "Guests Inside" value: length(Guest where each.is_inside);
-		monitor "Club Status" value: is_closing ? "CLOSING" : "OPEN";
 	}
 
 	init {
-		inspect "Agent Beliefs" value: (list(Dancer) + list(ShyPerson)) attributes: ['name', 'happiness', 'alcohoLevel', 'boredom'] type: table;
+		inspect "Agent Beliefs" value: (list(Dancer) + list(ShyPerson)) attributes: ['name', 'is_inside'] type: table;
 	}
 
 }
