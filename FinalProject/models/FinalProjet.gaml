@@ -231,30 +231,28 @@ species Barman parent: Person {
 	bool is_restocking <- false;
 
 	reflex giveDrink when: !empty(requests) {
-		message cfp <- requests[0];
-		list content_list <- list(cfp.contents);
-		int alcohoLevel <- int(content_list[0]);
-		int alcohol_tolerance_limit <- int(30 + (impatience * 35));
-		bool alcohol_check;
-		if (alcohoLevel > alcohol_tolerance_limit) {
-			alcohol_check <- false;
-		} else {
-			alcohol_check <- true;
-		}
+    loop while: !empty(requests) {
+        message cfp <- requests[0];
+        list content_list <- list(cfp.contents);
+        int alcohoLevel <- int(content_list[0]);
+        
+        remove cfp from: requests; 
 
-		if (alcohol_check and current_stock > 0) {
-			current_stock <- current_stock - 1;
-			do agree message: cfp contents: ['Y', generosity];
-			if (current_stock = 0) {
-				is_restocking <- true;
-				write ("Bar is closed for restocking");
-			}
+        int alcohol_tolerance_limit <- int(30 + (impatience * 35));
+        bool alcohol_check <- (alcohoLevel <= alcohol_tolerance_limit);
 
-		} else {
-			do refuse with: [message: cfp, contents: ["N"]];
-		}
-
-	}
+        if (alcohol_check and current_stock > 0) {
+            current_stock <- current_stock - 1;
+            do agree message: cfp contents: ['Y', generosity];
+            if (current_stock = 0) {
+                is_restocking <- true;
+                write ("Bar is closed for restocking");
+            }
+        } else { 
+            do refuse with: [message: cfp, contents: ["N"]];
+        }
+    }
+}
 
 	reflex stocking_process when: is_restocking {
 		current_stock <- current_stock + 100;
@@ -336,6 +334,18 @@ species Guest parent: Person {
 			}
 
 		} }
+		
+	reflex getDrinks when: alcohoLevel <= 50 and is_inside and !is_leaving {
+		isGoingToDJ <- true;
+		is_dancing <- false;
+		target <- bar_counter;
+		do goto target: target speed: 1.0;
+		if (self distance_to target < 1.5) {
+			do start_conversation to: [the_barman] protocol: 'fipa-request' performative: 'request' contents: [alcohoLevel];
+			isGoingToDJ <- false;
+		}
+
+	}
 
 	reflex decrease_alcohol when: is_inside and flip(0.05) {
 		alcohoLevel <- max([alcohoLevel - 2, 0]);
@@ -355,22 +365,13 @@ species Dancer parent: Guest {
 	}
 
 	reflex dance when: is_inside and alcohoLevel > 50 and !is_leaving and !isGoingToDJ and flip(0.8) {
-		target <- any_location_in(dance_floor);
+		if (target = nil) {
+            target <- any_location_in(dance_floor);
+            is_dancing <- true;
+        }
 		do goto target: target speed: 1.0;
 		is_dancing <- true;
 		happiness <- min([happiness + 0.01, 1.0]);
-	}
-
-	reflex getDrinks when: alcohoLevel <= 50 and is_inside and !is_leaving {
-		isGoingToDJ <- true;
-		is_dancing <- false;
-		target <- bar_counter;
-		do goto target: target speed: 1.0;
-		if (self distance_to target < 1.5) {
-			do start_conversation to: [the_barman] protocol: 'fipa-request' performative: 'request' contents: [alcohoLevel];
-			isGoingToDJ <- false;
-		}
-
 	}
 
 	reflex request_song when: is_inside and !is_leaving and flip(0.3) {
@@ -430,17 +431,7 @@ species ShyPerson parent: Guest {
 
 	}
 
-	reflex getDrinks when: alcohoLevel <= 50 and is_inside and !is_leaving {
-		isGoingToDJ <- true;
-		is_dancing <- false;
-		target <- bar_counter;
-		do goto target: target speed: 1.0;
-		if (self distance_to target < 1.5) {
-			do start_conversation to: [the_barman] protocol: 'fipa-request' performative: 'request' contents: [alcohoLevel];
-			isGoingToDJ <- false;
-		}
 
-	}
 
 	reflex call_dancer_for_boost when: is_inside and dance_desire < 0.4 and !is_dancing and flip(0.2) {
 		list<Dancer> nearby_dancers <- Dancer where (each.is_inside and (each distance_to self) < 15);
@@ -463,7 +454,10 @@ species ShyPerson parent: Guest {
 	}
 
 	reflex dance when: is_inside and alcohoLevel > 70 and dance_desire > 0.5 and !is_leaving and flip(0.7) {
-		target <- any_location_in(dance_floor);
+		if (target = nil) {
+            target <- any_location_in(dance_floor);
+            is_dancing <- true;
+        }
 		do goto target: target speed: 1.0;
 		is_dancing <- true;
 		boredom <- 0;
